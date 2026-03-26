@@ -1,0 +1,23 @@
+# Environment
+.env
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+*.egg-info/
+dist/
+build/
+
+# IDE
+.idea/
+.vscode/
+
+# Claude
+.claude/
+
+# Docs (local reference only)
+GIT_GUIDE.md
+Implementation_guide.txt
