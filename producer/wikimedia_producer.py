@@ -58,6 +58,8 @@ def main():
                     'title': data.get('title'),
                     'bot': data.get('bot'),
                     'timestamp': data.get('timestamp'),
+                    'minor': data.get('minor'),
+                    'namespace': data.get('namespace'),
                 }
 
                 producer.produce(
