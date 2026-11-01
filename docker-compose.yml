@@ -1,3 +1,8 @@
+# Kafka and PostgreSQL for the local pipeline. The producer and the Beam
+# streaming job run on the host so they can use the localhost listener.
+# Batch analytics (after data is in Kafka and wiki_window_counts):
+#   docker compose --profile analytics run --rm spark-analytics
+
 services:
 
   kafka:
@@ -43,45 +48,51 @@ services:
       - ./scripts/create_topics.sh:/create_topics.sh
     command: bash /create_topics.sh
 
-  flink-jobmanager:
-    image: apache/flink:1.19.1-java17
-    container_name: flink-jobmanager
-    command: jobmanager
-    ports:
-      - "8081:8081"
-    environment:
-      FLINK_PROPERTIES: |
-        jobmanager.rpc.address: flink-jobmanager
-
-  flink-taskmanager:
-    image: apache/flink:1.19.1-java17
-    container_name: flink-taskmanager
-    command: taskmanager
-    depends_on:
-      - flink-jobmanager
-    environment:
-      FLINK_PROPERTIES: |
-        jobmanager.rpc.address: flink-jobmanager
-        taskmanager.numberOfTaskSlots: 2
-
-  spark:
-    image: apache/spark:3.5.3-python3
-    container_name: spark
-    command: /opt/spark/bin/spark-class org.apache.spark.deploy.master.Master
-    ports:
-      - "4040:4040"
-      - "7077:7077"
-
   postgres:
     image: postgres:17
     container_name: postgres
     ports:
       - "5432:5432"
-    env_file:
-      - .env
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-wikimedia}
+      POSTGRES_USER: ${POSTGRES_USER:-wikimedia}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-wikimedia}
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./postgres/init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  spark-analytics:
+    image: apache/spark:3.5.3-python3
+    profiles: ["analytics"]
+    entrypoint: ["/opt/spark/bin/spark-submit"]
+    command:
+      - --master
+      - local[*]
+      - /opt/job/analytics.py
+    depends_on:
+      kafka:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    environment:
+      HOME: /tmp
+      SPARK_LOCAL_DIRS: /tmp
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: "5432"
+      POSTGRES_DB: ${POSTGRES_DB:-wikimedia}
+      POSTGRES_USER: ${POSTGRES_USER:-wikimedia}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-wikimedia}
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      KAFKA_TOPIC: wiki-edits
+    volumes:
+      - ./spark/analytics.py:/opt/job/analytics.py:ro
+    ports:
+      - "4040:4040"
 
 volumes:
   postgres_data:
